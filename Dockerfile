@@ -38,14 +38,18 @@
 # Use "nvidia-smi" to ensure your graphics card is visible inside the
 # container.
 
-FROM nvidia/cuda:13.0.2-devel-ubuntu22.04
+FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
 
 # Define build arguments and environment variables.
 
 ARG USER=sb
+ARG USER_UID=1000
+ARG USER_GID=1000
 ARG CARLA_VERSION=0.9.16
 
 ENV USER=${USER}
+ENV USER_UID=${USER_UID}
+ENV USER_GID=${USER_GID}
 ENV TZ=America/New_York
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CARLA_VERSION=$CARLA_VERSION
@@ -55,19 +59,24 @@ ENV CARLA_ROOT=/home/carla
 
 WORKDIR /home
 
-RUN useradd -m ${USER}
+RUN groupadd -g ${USER_GID} ${USER} \
+ && useradd -m -u ${USER_UID} -g ${USER_GID} ${USER}
 
 RUN set -xue && apt-key del 7fa2af80 \
 && apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/3bf863cc.pub \
 && apt-get update \
 && apt-get install -y build-essential cmake debhelper git wget xdg-user-dirs xserver-xorg libvulkan1 libsdl2-2.0-0 \
 libsm6 libgl1-mesa-glx libomp5 pip unzip libjpeg8 libtiff5 software-properties-common nano fontconfig g++ gcc gdb \
-libglib2.0-0 libgtk2.0-dev libnvidia-gl-580 libnvidia-common-580 libnvidia-compute-580 libvulkan-dev vulkan-tools \
-python-is-python3 mesa-utils python3-dbg
+libglib2.0-0 libgtk2.0-dev libnvidia-gl-570 libnvidia-common-570 libnvidia-compute-570 libvulkan-dev vulkan-tools \
+python-is-python3 mesa-utils python3-dbg sudo
 
 RUN pip install --no-cache-dir ninja numpy matplotlib opencv-python open3d scikit-image pyquaternion networkx psutil \
 tqdm pynput pyvista evdev==1.6.1
 
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu130
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu128
+
+RUN usermod -aG sudo ${USER}
+RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/nopasswd \
+ && chmod 0440 /etc/sudoers.d/nopasswd
 
 USER ${USER}
