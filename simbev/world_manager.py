@@ -1,33 +1,32 @@
 # Academic Software License: Copyright © 2026 Goodarz Mehr.
 
-'''
+"""
 Module that manages the CARLA world, performing functions such as loading the
 map, controlling the Scenario and Vehicle Managers, and stepping through the
 simulation.
-'''
+"""
 
-import time
-import carla
 import logging
+import time
+
+import carla
 
 try:
-    from .utils import is_used, kill_all_servers
-
-    from .vehicle_manager import VehicleManager
     from .scenario_manager import ScenarioManager
+    from .utils import is_used, kill_all_servers
+    from .vehicle_manager import VehicleManager
 
 except ImportError:
-    from utils import is_used, kill_all_servers
-
-    from vehicle_manager import VehicleManager
     from scenario_manager import ScenarioManager
+    from utils import is_used, kill_all_servers
+    from vehicle_manager import VehicleManager
 
 
 logger = logging.getLogger(__name__)
 
 
 class WorldManager:
-    '''
+    """
     The World Manager manages the CARLA world, performing functions such as
     loading the map, controlling the Scenario and Vehicle Managers, and
     stepping through the simulation.
@@ -36,55 +35,60 @@ class WorldManager:
         config: dictionary of configuration parameters.
         client: CARLA client.
         server_port: port number of the CARLA server.
-    '''
+    """
+
     def __init__(self, config: dict, client: carla.Client, server_port: int):
         self._config = config
         self._client = client
         self._server_port = server_port
-    
+
     def get_terminate_scene(self) -> bool:
-        '''Get scene termination status.'''
+        """Get scene termination status."""
         return self._terminate_scene
-    
+
+    def get_terminate_reason(self) -> str | None:
+        """Get the reason for scene termination, if any."""
+        return self._terminate_reason
+
     def get_map_name(self) -> str:
-        '''Get the name of the current map.'''
+        """Get the name of the current map."""
         return self._map_name
-    
+
     def get_world(self) -> carla.World:
-        '''Get the CARLA world.'''
+        """Get the CARLA world."""
         return self._world
-    
+
     def set_scene_duration(self, duration: int):
-        '''
+        """
         Set scene duration.
 
         Args:
             duration: scene duration in seconds.
-        '''
+        """
         self._scenario_manager.scene_duration = duration
-    
+
     def set_scene_info(self, info: dict):
-        '''
+        """
         Set scene information.
 
         Args:
             info: dictionary of scene information.
-        '''
+        """
         return self._scenario_manager.set_scene_info(info)
-    
+
     def load_map(self, map_name: str):
-        '''
+        """
         Load the desired map and apply the appropriate settings.
 
         Args:
             map_name: name of the map to load.
-        '''
-        logger.info(f'Loading {map_name}...')
+        """
+        logger.info(f"Loading {map_name}...")
 
         self._map_name = map_name
-        
-        if map_name == 'Town10HD':
-            self._client.load_world('Town10HD_Opt')
+
+        if map_name == "Town10HD":
+            self._client.load_world("Town10HD_Opt")
         else:
             self._client.load_world(map_name)
 
@@ -95,23 +99,23 @@ class WorldManager:
         settings = self._world.get_settings()
 
         settings.synchronous_mode = True
-        settings.fixed_delta_seconds = self._config['timestep']
+        settings.fixed_delta_seconds = self._config["timestep"]
 
         # If the selected map is Town12 or Town13 (large maps), limit tile
         # stream distance and actor active distance. If Town13 or Town15 are
         # selected, set max culling distance to 100.0, then revert back to 0.
         # This ensures faraway objects are rendered correctly.
-        if map_name in ['Town12', 'Town13']:
-            settings.tile_stream_distance = self._config['tile_stream_distance']
-            settings.actor_active_distance = self._config['actor_active_distance']
+        if map_name in ["Town12", "Town13"]:
+            settings.tile_stream_distance = self._config["tile_stream_distance"]
+            settings.actor_active_distance = self._config["actor_active_distance"]
 
-        if map_name in ['Town13', 'Town15']:
+        if map_name in ["Town13", "Town15"]:
             settings.max_culling_distance = 100.0
 
             self._world.apply_settings(settings)
 
             time.sleep(3.0)
-        
+
         settings.max_culling_distance = 0.0
 
         self._world.apply_settings(settings)
@@ -119,65 +123,58 @@ class WorldManager:
         self._world.set_annotations_traverse_translucency(True)
 
         # Set up the Traffic Manager.
-        logger.debug('Setting up the Traffic Manager...')
+        logger.debug("Setting up the Traffic Manager...")
 
         self._tm_port = self._server_port // 10 + self._server_port % 10
 
         while is_used(self._tm_port):
-            logger.warning(f'Traffic Manager port {self._tm_port} is already being used. Checking the next one...')
+            logger.warning(
+                f"Traffic Manager port {self._tm_port} is already being used. Checking the next one..."
+            )
             self._tm_port += 1
-        
+
         self._traffic_manager = self._client.get_trafficmanager(self._tm_port)
         self._traffic_manager.set_synchronous_mode(True)
 
-        logger.debug(f'Traffic Manager is connected to port {self._tm_port}.')
+        logger.debug(f"Traffic Manager is connected to port {self._tm_port}.")
 
         self._world.tick()
 
-        logger.info(f'{map_name} loaded.')
-    
+        logger.info(f"{map_name} loaded.")
+
         # Some objects obstruct the overhead or bottom-up view that is
         # necessary for the collection of accurate ground truth data, so they
         # are removed from the map.
-        logger.debug(f'Removing objects obstructing the overhead or bottom-up view from {map_name}...')
+        logger.debug(
+            f"Removing objects obstructing the overhead or bottom-up view from {map_name}..."
+        )
 
-        if map_name == 'Town02':
+        if map_name == "Town02":
+            obstructing = ["Floor_", "Vh_Car_AudiA2_"]
+        elif map_name == "Town03":
             obstructing = [
-                'Floor_',
-                'Vh_Car_AudiA2_'
+                "SM_GasStation01",
+                "SM_Mansion02",
+                "Sassafras_04_LOD27",
+                "Custom_pine_beech_02_LOD1",
+                "Veg_Tree_AcerSaccharum_v19",
+                "Veg_Tree_AcerSaccharum_v20",
+                "Japanese_Maple_01_LOD10",
+                "Japanese_Maple_01_LOD11",
+                "Japanese_Maple_01_LOD14",
+                "SM_T03_RailTrain02",
+                "BP_RepSpline5_Inst_0_0",
+                "BP_RepSpline5_Inst_2_2",
+                "BP_RepSpline6_",
+                "Road_Road_Town03_1_",
             ]
-        elif map_name == 'Town03':
-            obstructing = [
-                'SM_GasStation01',
-                'SM_Mansion02',
-                'Sassafras_04_LOD27',
-                'Custom_pine_beech_02_LOD1',
-                'Veg_Tree_AcerSaccharum_v19',
-                'Veg_Tree_AcerSaccharum_v20',
-                'Japanese_Maple_01_LOD10',
-                'Japanese_Maple_01_LOD11',
-                'Japanese_Maple_01_LOD14',
-                'SM_T03_RailTrain02',
-                'BP_RepSpline5_Inst_0_0',
-                'BP_RepSpline5_Inst_2_2',
-                'BP_RepSpline6_',
-                'Road_Road_Town03_1_'
-            ]
-        elif map_name == 'Town04':
-            obstructing = [
-                'SideWalkCube',
-                'SM_GasStation01'
-            ]
-        elif map_name == 'Town05':
-            obstructing = [
-                'Plane',
-                'SM_Awning117'
-            ]
-        elif map_name == 'Town07':
-            obstructing = [
-                'Cube'
-            ]
-        elif map_name == 'Town10HD':
+        elif map_name == "Town04":
+            obstructing = ["SideWalkCube", "SM_GasStation01"]
+        elif map_name == "Town05":
+            obstructing = ["Plane", "SM_Awning117"]
+        elif map_name == "Town07":
+            obstructing = ["Cube"]
+        elif map_name == "Town10HD":
             # The first ones are for Town10HD, the second ones are for
             # Town10HD_Opt.
             # obstructing = [
@@ -209,61 +206,67 @@ class WorldManager:
             #     'InstancedFoliageActor_0_Inst_277_42'
             # ]
             obstructing = [
-                'SM_Tesla2',
-                'SM_Tesla_2502',
-                'SM_Mustang_prop2',
-                'SM_Patrol2021Parked2',
-                'SM_mercedescccParked2',
-                'SM_LincolnMkz2017_prop',
-                'Vh_Car_ToyotaPrius_NOrig',
-                'InstancedFoliageActor_0_Inst_12961_0',
-                'InstancedFoliageActor_0_Inst_12965_4',
-                'InstancedFoliageActor_0_Inst_12971_10',
-                'InstancedFoliageActor_0_Inst_12972_11',
-                'InstancedFoliageActor_0_Inst_12980_19',
-                'InstancedFoliageActor_0_Inst_12981_20',
-                'InstancedFoliageActor_0_Inst_12982_21',
-                'InstancedFoliageActor_0_Inst_12983_22',
-                'InstancedFoliageActor_0_Inst_13002_41',
-                'InstancedFoliageActor_0_Inst_13003_42'
+                "SM_Tesla2",
+                "SM_Tesla_2502",
+                "SM_Mustang_prop2",
+                "SM_Patrol2021Parked2",
+                "SM_mercedescccParked2",
+                "SM_LincolnMkz2017_prop",
+                "Vh_Car_ToyotaPrius_NOrig",
+                "InstancedFoliageActor_0_Inst_12961_0",
+                "InstancedFoliageActor_0_Inst_12965_4",
+                "InstancedFoliageActor_0_Inst_12971_10",
+                "InstancedFoliageActor_0_Inst_12972_11",
+                "InstancedFoliageActor_0_Inst_12980_19",
+                "InstancedFoliageActor_0_Inst_12981_20",
+                "InstancedFoliageActor_0_Inst_12982_21",
+                "InstancedFoliageActor_0_Inst_12983_22",
+                "InstancedFoliageActor_0_Inst_13002_41",
+                "InstancedFoliageActor_0_Inst_13003_42",
             ]
         else:
             obstructing = []
 
         self._bad_crosswalks = [
-            'Road_Crosswalk_Town03_59_',
-            'Road_Crosswalk_Town04_28_',
-            'Road_Crosswalk_Town04_29_',
-            'Road_Crosswalk_Town04_30_',
-            'Road_Crosswalk_Town07_5_',
-            'Road_Crosswalk_Town07_8_',
-            'Road_Crosswalk_Town07_9_'
+            "Road_Crosswalk_Town03_59_",
+            "Road_Crosswalk_Town04_28_",
+            "Road_Crosswalk_Town04_29_",
+            "Road_Crosswalk_Town04_30_",
+            "Road_Crosswalk_Town07_5_",
+            "Road_Crosswalk_Town07_8_",
+            "Road_Crosswalk_Town07_9_",
         ]
-        
+
         self._objects = self._world.get_environment_objects()
 
-        to_remove = [obj.id for obj in self._objects if any(x in obj.name for x in obstructing)]
+        to_remove = [
+            obj.id for obj in self._objects if any(x in obj.name for x in obstructing)
+        ]
 
         self._world.enable_environment_objects(set(to_remove), False)
 
         self._world.tick()
 
-        logger.debug(f'Objects obstructing the overhead or bottom-up view were removed from {map_name}.')
-        logger.debug('Generating waypoints...')
+        logger.debug(
+            f"Objects obstructing the overhead or bottom-up view were removed from {map_name}."
+        )
+        logger.debug("Generating waypoints...")
 
-        self._waypoints = self._map.generate_waypoints(self._config['waypoint_distance'])
+        self._waypoints = self._map.generate_waypoints(
+            self._config["waypoint_distance"]
+        )
 
         self._crosswalks = self._map.get_crosswalks()
 
         self._world.tick()
 
-        logger.debug('Waypoints generated.')
-        logger.debug('Getting the Light Manager...')
+        logger.debug("Waypoints generated.")
+        logger.debug("Getting the Light Manager...")
 
         self._light_manager = self._world.get_lightmanager()
 
-        logger.debug('Got the Light Manager.')
-        logger.debug('Creating the Scenario Manager...')
+        logger.debug("Got the Light Manager.")
+        logger.debug("Creating the Scenario Manager...")
 
         self._scenario_manager = ScenarioManager(
             self._config,
@@ -271,75 +274,89 @@ class WorldManager:
             self._world,
             self._traffic_manager,
             self._light_manager,
-            map_name
+            map_name,
         )
 
-        logger.debug('Scenario Manager created.')
-        logger.debug('Creating the Vehicle Manager...')
+        logger.debug("Scenario Manager created.")
+        logger.debug("Creating the Vehicle Manager...")
 
-        self._vehicle_manager = VehicleManager(self._config, self._world, self._traffic_manager, map_name)
+        self._vehicle_manager = VehicleManager(
+            self._config, self._world, self._traffic_manager, map_name
+        )
 
-        logger.debug('Vehicle Manager created.')
-    
+        logger.debug("Vehicle Manager created.")
+
     def set_carla_seed(self, seed: int):
-        '''
+        """
         Set CARLA's random seed.
 
         Args:
             seed: random seed.
-        '''
+        """
         self._world.reset_all_traffic_lights()
         self._world.set_pedestrians_seed(seed)
         self._traffic_manager.set_random_device_seed(seed)
-    
+
     def spawn_vehicle(self):
-        '''Prepare to spawn the ego vehicle at a spawn point.'''
+        """Prepare to spawn the ego vehicle at a spawn point."""
         # Get the ego vehicle blueprint and spawn points.
-        logger.debug('Getting vehicle blueprint and spawn points...')
+        logger.debug("Getting vehicle blueprint and spawn points...")
 
-        bp = self._world.get_blueprint_library().filter(self._config['vehicle'])[0]
+        bp = self._world.get_blueprint_library().filter(self._config["vehicle"])[0]
 
-        bp.set_attribute('role_name', 'hero')
-        bp.set_attribute('color', self._config['vehicle_color'])
+        bp.set_attribute("role_name", "hero")
+        bp.set_attribute("color", self._config["vehicle_color"])
 
-        wp_all = self._map.generate_waypoints(self._config['spawn_point_separation_distance'])
+        wp_all = self._map.generate_waypoints(
+            self._config["spawn_point_separation_distance"]
+        )
 
         # Filter out spawn points that are in a junction or within 4 meters of
         # a junction.
         wp_mid = [wp for wp in wp_all if wp.next(4.0) != []]
 
         self._spawn_points = [
-            wp.transform for wp in wp_mid if (wp.is_junction is False and wp.next(4.0)[0].is_junction is False)
+            wp.transform
+            for wp in wp_mid
+            if (wp.is_junction is False and wp.next(4.0)[0].is_junction is False)
         ]
 
         for sp in self._spawn_points:
             sp.location.z += 0.4
 
         self._spawn_points_copy = self._spawn_points
-        
-        if 'ego_vehicle_spawn_point' in self._config:
-            if self._map_name in self._config['ego_vehicle_spawn_point']:
-                spawn_point_list = self._config['ego_vehicle_spawn_point'][self._map_name]
+
+        if "ego_vehicle_spawn_point" in self._config:
+            if self._map_name in self._config["ego_vehicle_spawn_point"]:
+                spawn_point_list = self._config["ego_vehicle_spawn_point"][
+                    self._map_name
+                ]
 
                 self._spawn_points = []
 
                 for sp in spawn_point_list:
                     location = carla.Location(x=sp[0][0], y=sp[0][1], z=sp[0][2])
-                    rotation = carla.Rotation(roll=sp[1][0], pitch=sp[1][1], yaw=sp[1][2])
+                    rotation = carla.Rotation(
+                        roll=sp[1][0], pitch=sp[1][1], yaw=sp[1][2]
+                    )
 
                     self._spawn_points.append(carla.Transform(location, rotation))
-        
-        logger.debug(f'{len(self._spawn_points)} spawn points available.')
-        logger.debug('Got vehicle blueprint and spawn points.')
 
-        self._scenario_manager.scene_info = self._vehicle_manager.spawn_vehicle(bp, self._spawn_points, self._tm_port)
-    
+        logger.debug(f"{len(self._spawn_points)} spawn points available.")
+        logger.debug("Got vehicle blueprint and spawn points.")
+
+        self._scenario_manager.scene_info = self._vehicle_manager.spawn_vehicle(
+            bp, self._spawn_points, self._tm_port
+        )
+
     def move_vehicle(self):
-        '''Move the ego vehicle to a new spawn point.'''
-        self._scenario_manager.scene_info = self._vehicle_manager.move_vehicle(self._spawn_points, self._tm_port)
-    
+        """Move the ego vehicle to a new spawn point."""
+        self._scenario_manager.scene_info = self._vehicle_manager.move_vehicle(
+            self._spawn_points, self._tm_port
+        )
+
     def find_vehicle(self):
-        '''Find the vehicle in the world.'''
+        """Find the vehicle in the world."""
         startup_actors = self._world.get_actors()
 
         self._vehicle_manager.find_vehicle()
@@ -347,34 +364,43 @@ class WorldManager:
         actors = self._world.get_actors()
 
         self._replay_actors = [actor for actor in actors if actor not in startup_actors]
-    
+
     def _dynamic_settings_adjustment(self, scene_duration: float):
-        '''Adjust world settings dynamically for large maps.'''
+        """Adjust world settings dynamically for large maps."""
         settings = self._world.get_settings()
 
-        settings.tile_stream_distance = 35.0 * (scene_duration + self._config['warmup_duration'])
-        settings.actor_active_distance = 35.0 * (scene_duration + self._config['warmup_duration'])
+        settings.tile_stream_distance = 35.0 * (
+            scene_duration + self._config["warmup_duration"]
+        )
+        settings.actor_active_distance = 35.0 * (
+            scene_duration + self._config["warmup_duration"]
+        )
 
         self._world.apply_settings(settings)
-        
-        logger.debug(f'Changed tile stream distance to {settings.tile_stream_distance:.1f} m.')
-        logger.debug(f'Changed actor active distance to {settings.actor_active_distance:.1f} m.')
-    
+
+        logger.debug(
+            f"Changed tile stream distance to {settings.tile_stream_distance:.1f} m."
+        )
+        logger.debug(
+            f"Changed actor active distance to {settings.actor_active_distance:.1f} m."
+        )
+
     def start_scene(self, seed: int = None):
-        '''
+        """
         Start the scene.
-        
+
         Args:
             seed: random seed for the scene.
-        '''
+        """
         try:
             self._counter = 0
             self._termination_counter = 0
-            
-            self._terminate_scene = False
 
-            if self._config['dynamic_settings_adjustments']:
-                if self._map_name in ['Town12', 'Town13']:
+            self._terminate_scene = False
+            self._terminate_reason = None
+
+            if self._config["dynamic_settings_adjustments"]:
+                if self._map_name in ["Town12", "Town13"]:
                     # Due to an object registration issue in large maps, these
                     # parameters have to first be set to high values to ensure
                     # the bounding boxes of all traffic signs are registered.
@@ -382,17 +408,23 @@ class WorldManager:
 
                     self._world.tick()
 
-                    self._dynamic_settings_adjustment(self._scenario_manager.scene_duration)
+                    self._dynamic_settings_adjustment(
+                        self._scenario_manager.scene_duration
+                    )
 
                     self._world.tick()
-            
+
             # Add information about the scene to the scene info.
-            self._scenario_manager.scene_info['map'] = self._map_name
-            self._scenario_manager.scene_info['vehicle'] = self._vehicle_manager.vehicle.type_id
-            self._scenario_manager.scene_info['expected_scene_duration'] = self._scenario_manager.scene_duration
-            self._scenario_manager.scene_info['terminated_early'] = False
-            self._scenario_manager.scene_info['seed'] = seed
-            
+            self._scenario_manager.scene_info["map"] = self._map_name
+            self._scenario_manager.scene_info["vehicle"] = (
+                self._vehicle_manager.vehicle.type_id
+            )
+            self._scenario_manager.scene_info["expected_scene_duration"] = (
+                self._scenario_manager.scene_duration
+            )
+            self._scenario_manager.scene_info["terminated_early"] = False
+            self._scenario_manager.scene_info["seed"] = seed
+
             self._set_spectator_view()
 
             self._world.tick()
@@ -401,7 +433,9 @@ class WorldManager:
             # generation.
             ground_truth_manager = self._vehicle_manager.get_ground_truth_manager()
 
-            ground_truth_manager.augment_waypoints(self._waypoints, self._scenario_manager.scene_duration)
+            ground_truth_manager.augment_waypoints(
+                self._waypoints, self._scenario_manager.scene_duration
+            )
             ground_truth_manager.get_area_crosswalks(self._crosswalks)
             ground_truth_manager.get_environment_objects()
             ground_truth_manager.get_bounding_boxes()
@@ -409,44 +443,60 @@ class WorldManager:
             self._scenario_manager.setup_scenario(
                 self._vehicle_manager.vehicle.get_location(),
                 self._spawn_points_copy,
-                self._tm_port
+                self._tm_port,
             )
 
-            ground_truth_manager.get_hazards(self._scenario_manager.get_hazard_locations())
+            ground_truth_manager.get_hazards(
+                self._scenario_manager.get_hazard_locations()
+            )
 
             self._set_spectator_view()
 
             self._world.tick()
-        
+
         except Exception as e:
-            logger.error(f'Error while starting the scene: {e}')
+            logger.error(f"Error while starting the scene: {e}")
 
             kill_all_servers()
 
             time.sleep(3.0)
 
-            raise Exception('Cannot start the scene. Good bye!')
+            raise Exception("Cannot start the scene. Good bye!")
 
-    def configure_replay_weather(self, initial_weather: dict, final_weather: dict = None):
-        '''
+    def configure_replay_weather(
+        self, initial_weather: dict, final_weather: dict = None
+    ):
+        """
         Configure the weather for replaying a scenario.
 
         Args:
             initial_weather: initial weather parameters.
             final_weather: final weather parameters.
-        '''
-        return self._scenario_manager.configure_replay_weather(initial_weather, final_weather)
-    
+        """
+        return self._scenario_manager.configure_replay_weather(
+            initial_weather, final_weather
+        )
+
     def _set_spectator_view(self):
-        '''Set the spectator view to follow the ego vehicle.'''
+        """Set the spectator view to follow the ego vehicle."""
         if self._vehicle_manager.vehicle is not None:
             # Get the ego vehicle's coordinates.
             transform = self._vehicle_manager.vehicle.get_transform()
 
             # Calculate the spectator's desired position.
-            view_x = transform.location.x - 2 * self._config['spectator_height'] * transform.get_forward_vector().x
-            view_y = transform.location.y - 2 * self._config['spectator_height'] * transform.get_forward_vector().y
-            view_z = transform.location.z + self._config['spectator_height']
+            view_x = (
+                transform.location.x
+                - 2
+                * self._config["spectator_height"]
+                * transform.get_forward_vector().x
+            )
+            view_y = (
+                transform.location.y
+                - 2
+                * self._config["spectator_height"]
+                * transform.get_forward_vector().y
+            )
+            view_z = transform.location.z + self._config["spectator_height"]
 
             # Calculate the spectator's desired orientation.
             view_roll = transform.rotation.roll
@@ -457,23 +507,23 @@ class WorldManager:
             self._spectator.set_transform(
                 carla.Transform(
                     carla.Location(x=view_x, y=view_y, z=view_z),
-                    carla.Rotation(roll=view_roll, pitch=view_pitch, yaw=view_yaw)
+                    carla.Rotation(roll=view_roll, pitch=view_pitch, yaw=view_yaw),
                 )
             )
         else:
             return
 
     def tick(
-            self,
-            path: str = None,
-            scene: int = None,
-            frame: int = None,
-            render: bool = False,
-            save: bool = False,
-            augment: bool = False,
-            replay: bool = False
-        ):
-        '''
+        self,
+        path: str = None,
+        scene: int = None,
+        frame: int = None,
+        render: bool = False,
+        save: bool = False,
+        augment: bool = False,
+        replay: bool = False,
+    ):
+        """
         Proceed for one time step.
 
         Args:
@@ -484,7 +534,7 @@ class WorldManager:
             save: whether to save sensor data to file.
             augment: whether the dataset is being augmented.
             replay: whether the scene is being replayed.
-        '''
+        """
         # Wait for all I/O operations to finish before proceeding.
         if save:
             self._vehicle_manager.get_sensor_manager().wait_for_saves()
@@ -498,14 +548,14 @@ class WorldManager:
             self._scenario_manager.manage_doors()
 
         # Change the weather if configured to do so.
-        if self._config['dynamic_weather'] and scene is not None:
+        if self._config["dynamic_weather"] and scene is not None:
             self._scenario_manager.adjust_weather(replay)
-        
+
         # Sometimes the data may not get updated in time for the first frame,
         # so wait a bit before and after ticking the world.
         if frame is not None and frame == 0:
             time.sleep(1.0)
-        
+
         # Proceed for one time step.
         self._world.tick()
 
@@ -513,7 +563,7 @@ class WorldManager:
             time.sleep(1.0)
 
         self._set_spectator_view()
-        
+
         if render or save:
             self._vehicle_location = self._vehicle_manager.vehicle.get_location()
 
@@ -521,10 +571,10 @@ class WorldManager:
 
             if not augment:
                 ground_truth_manager = self._vehicle_manager.get_ground_truth_manager()
-                
-                if self._counter % round(0.5 / self._config['timestep']) == 0:
+
+                if self._counter % round(0.5 / self._config["timestep"]) == 0:
                     ground_truth_manager.trim_map_sections()
-                
+
                 ground_truth_manager.get_ground_truth()
 
                 self._counter += 1
@@ -533,42 +583,47 @@ class WorldManager:
         if render:
             if not augment:
                 ground_truth_manager.render()
-            
+
             sensor_manager.render()
-        
+
         # Save the data and ground truth to file.
         if save and all(v is not None for v in [path, scene, frame]):
             if not augment:
                 ground_truth_manager.save(path, scene, frame)
-            
+
             sensor_manager.save(path, scene, frame)
 
         if not replay:
             # Decide whether to terminate the scene.
-            if scene is not None and self._config['early_scene_termination']:
+            if scene is not None and self._config["early_scene_termination"]:
                 if self._vehicle_manager.vehicle.get_velocity().length() < 0.1:
                     self._termination_counter += 1
                 else:
                     self._termination_counter = 0
-                
-                if self._termination_counter * self._config['timestep'] >= self._config['termination_timeout']:
+
+                if (
+                    self._termination_counter * self._config["timestep"]
+                    >= self._config["termination_timeout"]
+                ):
                     self._terminate_scene = True
-    
+                    if self._terminate_reason is None:
+                        self._terminate_reason = "ego_stopped_timeout"
+
     def wait_for_saves(self):
-        '''Wait for all save operations to complete.'''
+        """Wait for all save operations to complete."""
         self._vehicle_manager.get_sensor_manager().wait_for_saves()
-    
+
     def stop_scene(self):
-        '''Stop the scene.'''
+        """Stop the scene."""
         return self._scenario_manager.stop_scene()
-    
+
     def destroy_vehicle(self):
-        '''Destroy the vehicle.'''
+        """Destroy the vehicle."""
         return self._vehicle_manager.destroy_vehicle()
-    
+
     def destroy_replay_actors(self):
-        '''Destroy the actors that were added during replay.'''
-        logger.debug('Destroying replay actors...')
+        """Destroy the actors that were added during replay."""
+        logger.debug("Destroying replay actors...")
 
         self._vehicle_manager.get_sensor_manager().destroy()
 
@@ -576,16 +631,16 @@ class WorldManager:
 
         try:
             for actor in self._world.get_actors():
-                if 'controller' in actor.type_id:
+                if "controller" in actor.type_id:
                     actor.stop()
 
         except Exception:
             pass
 
         self._world.tick()
-        
+
         for actor in self._replay_actors:
-            if all(x not in actor.type_id for x in ['sensor', 'spectator']):
+            if all(x not in actor.type_id for x in ["sensor", "spectator"]):
                 actor.destroy()
 
         self._replay_actors = []
@@ -593,25 +648,25 @@ class WorldManager:
         self._vehicle_manager.vehicle = None
 
         self._world.tick()
-        
-        logger.debug('Replay actors destroyed.')
-    
+
+        logger.debug("Replay actors destroyed.")
+
     def shut_down_traffic_manager(self):
-        '''Shut down the Traffic Manager.'''
-        logger.debug('Shutting down the Traffic Manager...')
+        """Shut down the Traffic Manager."""
+        logger.debug("Shutting down the Traffic Manager...")
 
         self._traffic_manager.shut_down()
 
-        logger.debug('Traffic Manager shut down.')
-    
+        logger.debug("Traffic Manager shut down.")
+
     def package_data(self) -> dict:
-        '''
+        """
         Package scene information and data into a dictionary and return it.
 
         Returns:
             data: dictionary containing scene information and data.
-        '''
+        """
         return {
-            'scene_info': self._scenario_manager.scene_info,
-            'scene_data': self._vehicle_manager.get_sensor_manager().get_data()
+            "scene_info": self._scenario_manager.scene_info,
+            "scene_data": self._vehicle_manager.get_sensor_manager().get_data(),
         }
